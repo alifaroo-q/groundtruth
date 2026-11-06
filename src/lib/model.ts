@@ -18,7 +18,7 @@ export interface ModelPort {
   generate<S extends StepId>(step: S, prompt: string): Promise<ModelOutput[S]>;
 }
 
-export const REPLAY_MODEL_ID = "hand-authored sample";
+const REPLAY_MODEL_ID = "hand-authored sample";
 
 const apiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
@@ -28,13 +28,11 @@ export function runtimeMode(): { mode: RunMode; modelId: string } {
     : { mode: "replay", modelId: REPLAY_MODEL_ID };
 }
 
-/** Throws with a user-facing message when the scenario cannot run in the current mode. */
-export function createPort(scenario: Scenario): ModelPort {
+export function createPort(scenario: Scenario): ModelPort | string {
   const key = apiKey();
   if (key) return livePort(key, runtimeMode().modelId);
   const fixture = FIXTURES.find((f) => sameScenario(f.scenario, scenario));
-  if (!fixture) throw new Error("Edited input needs a live model: set GEMINI_API_KEY in .env.local");
-  return replayPort(fixture);
+  return fixture ? replayPort(fixture) : "Edited input needs a live model: set GEMINI_API_KEY in .env.local";
 }
 
 function sameScenario(a: Scenario, b: Scenario): boolean {
@@ -112,7 +110,6 @@ const object = (properties: Record<string, unknown>, required = Object.keys(prop
   required,
 });
 
-// Flat shapes: the executors narrow them to the domain unions.
 const OUTPUT_SCHEMAS: Record<StepId, unknown> = {
   parse_doc_claims: object({
     claims: {

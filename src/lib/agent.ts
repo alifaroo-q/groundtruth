@@ -18,8 +18,7 @@ type RunContext = { scenario: Scenario; port: ModelPort; outputs: Partial<StepOu
 
 type Executor<S extends StepId> = {
   run(ctx: RunContext): Promise<StepOutput[S]>;
-  /** Compact functionResponse for the orchestrator; the full output stays server-side. */
-  summarize(output: StepOutput[S]): Record<string, unknown>;
+  toFunctionResponse(output: StepOutput[S]): Record<string, unknown>;
 };
 
 const rulesBlock = (rules: string[]) => rules.map((r) => `- ${r}`).join("\n");
@@ -28,6 +27,17 @@ function prior<S extends StepId>(ctx: RunContext, step: S): StepOutput[S] {
   const output = ctx.outputs[step];
   if (!output) throw new Error(`${step} output missing from run context`);
   return output as StepOutput[S];
+}
+
+// Takes only the public page and question: ground truth here would erase the hallucination under test.
+function unguidedAnswerPrompt({ publicMarkdown, buyerQuestion }: Pick<Scenario, "publicMarkdown" | "buyerQuestion">) {
+  return `You are an AI answer engine. A buyer asked the question below. Answer the buyer directly and confidently from this page in 2 to 4 sentences.
+In citedPassages, copy verbatim the passages from the page you relied on.
+
+PAGE:
+${publicMarkdown}
+
+QUESTION: ${buyerQuestion}`;
 }
 
 export const EXECUTORS: { [S in StepId]: Executor<S> } = {
@@ -55,7 +65,7 @@ ${rulesBlock(scenario.groundTruthRules)}`,
         claims: report.claims.map((c) => ({ ...c, relatedRule: c.relatedRule || null })),
       };
     },
-    summarize: (r) => ({
+    toFunctionResponse: (r) => ({
       claims: r.claims.length,
       atRisk: r.claims.filter((c) => c.status !== "explicit").length,
       buriedOrMissingConditions: r.buriedOrMissingConditions,
@@ -63,19 +73,8 @@ ${rulesBlock(scenario.groundTruthRules)}`,
   },
 
   test_buyer_prompt: {
-    // Ground truth must never reach this prompt, or the hallucination under test disappears.
-    run: ({ scenario, port }) =>
-      port.generate(
-        "test_buyer_prompt",
-        `You are an AI answer engine. A buyer asked the question below. Answer the buyer directly and confidently from this page in 2 to 4 sentences.
-In citedPassages, copy verbatim the passages from the page you relied on.
-
-PAGE:
-${scenario.publicMarkdown}
-
-QUESTION: ${scenario.buyerQuestion}`,
-      ),
-    summarize: (s) => ({ answer: s.answer }),
+    run: ({ scenario, port }) => port.generate("test_buyer_prompt", unguidedAnswerPrompt(scenario)),
+    toFunctionResponse: (s) => ({ answer: s.answer }),
   },
 
   verify_causal_harm: {
@@ -114,7 +113,7 @@ ${synthesis.answer}`;
       }
       return record;
     },
-    summarize: (d) =>
+    toFunctionResponse: (d) =>
       d.verdict === "defect"
         ? { verdict: d.verdict, defectType: d.defectType, harm: d.harm, rootCauseExcerpt: d.rootCauseExcerpt }
         : { verdict: d.verdict, rationale: d.rationale },
@@ -146,7 +145,7 @@ ${scenario.publicMarkdown}`,
       );
       return compilePrArtifact(scenario, defect, draft);
     },
-    summarize: (p) => ({ branchName: p.branchName, prTitle: p.prTitle, diffLines: p.unifiedDiff.split("\n").length }),
+    toFunctionResponse: (p) => ({ branchName: p.branchName, prTitle: p.prTitle, diffLines: p.unifiedDiff.split("\n").length }),
   },
 };
 
@@ -165,7 +164,7 @@ function toDefectRecord(raw: Record<string, unknown>): DefectRecord {
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-export function compilePrArtifact(
+function compilePrArtifact(
   scenario: Scenario,
   defect: Extract<DefectRecord, { verdict: "defect" }>,
   draft: RewriteDraft,
@@ -186,14 +185,17 @@ export function compilePrArtifact(
   };
 }
 
-function buildJsonLd(draft: RewriteDraft): Record<string, unknown>[] {
-  // shortcut: offers come from Markdown table rows with a "$" price cell; prose-only pricing yields none.
-  const offers = draft.rewrittenMarkdown.split("\n").flatMap((line) => {
+function offersFromPriceTableRows(markdown: string) {
+  return markdown.split("\n").flatMap((line) => {
     if (!line.trim().startsWith("|")) return [];
     const [name, ...rest] = line.split("|").map((c) => c.trim()).filter(Boolean);
     const price = rest.join(" ").match(/\$([\d,]+(?:\.\d+)?)/);
     return price ? [{ "@type": "Offer", name: name.replace(/\*/g, ""), price: price[1].replace(/,/g, ""), priceCurrency: "USD" }] : [];
   });
+}
+
+function buildJsonLd(draft: RewriteDraft): Record<string, unknown>[] {
+  const offers = offersFromPriceTableRows(draft.rewrittenMarkdown);
   return [
     {
       "@context": "https://schema.org",
@@ -257,7 +259,7 @@ export async function runAgent(scenario: Scenario, port: ModelPort, emit: (e: Ag
       emit({ type: "step_done", step: id, output, ms: Date.now() - started } as AgentEvent);
       history.push(call.content, {
         role: "user",
-        parts: [{ functionResponse: { id: call.id, name: id, response: { output: executor.summarize(output) } } }],
+        parts: [{ functionResponse: { id: call.id, name: id, response: { output: executor.toFunctionResponse(output) } } }],
       });
     } catch (e) {
       emit({ type: "step_error", step: id, message: errorMessage(e), ms: Date.now() - started });

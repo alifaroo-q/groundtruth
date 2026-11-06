@@ -2,8 +2,6 @@ import { runAgent } from "@/lib/agent";
 import type { AgentEvent, Scenario } from "@/lib/domain";
 import { createPort } from "@/lib/model";
 
-// No `runtime`/`dynamic` exports: cacheComponents rejects them, and POST handlers are never cached.
-
 const MAX_MARKDOWN = 60_000;
 const MAX_FIELD = 2_000;
 const MAX_RULES = 30;
@@ -52,8 +50,10 @@ export async function POST(request: Request) {
           open = false;
         }
       };
+      const port = createPort(scenario);
       try {
-        await runAgent(scenario, createPort(scenario), emit);
+        if (typeof port === "string") emit({ type: "run_error", message: port });
+        else await runAgent(scenario, port, emit);
       } catch (e) {
         emit({ type: "run_error", message: e instanceof Error ? e.message : String(e) });
       }

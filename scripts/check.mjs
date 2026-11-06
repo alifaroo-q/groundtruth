@@ -1,4 +1,3 @@
-// Usage: node scripts/check.mjs [baseUrl]. Runs every fixture through POST /api/agent/run and checks the stream.
 import assert from "node:assert/strict";
 import { applyPatch, parsePatch } from "diff";
 import { FIXTURES } from "../src/fixtures/scenarios.ts";
