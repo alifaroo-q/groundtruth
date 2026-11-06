@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GroundTruth Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #0b0c0a; --panel: #111310; --raised: #171a16; --line: #262a24; --line-strong: #3a4036;
+    --fg: #e4e7df; --dim: #8b9285; --faint: #5c6357; --accent: #d4ff3a; --accent-ink: #141a00;
+    --critical: #ff4d4d; --add: #3ddc97; --del: #ff6b6b; --medium: #f5d547;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--canvas); color: var(--fg); font: 15px/1.55 "IBM Plex Sans Condensed", ui-sans-serif, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+  h2 { font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin: 36px 0 12px; }
+  p { margin: 0 0 10px; color: var(--dim); }
+  .lede { font-size: 17px; color: var(--fg); max-width: 760px; }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; }
+
+  .problem { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px 14px; }
+  .card .k { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
+  .card.bad { border-color: rgb(255 77 77 / .5); }
+  .card.good { border-color: rgb(61 220 151 / .5); }
+  .passage { font-family: "IBM Plex Mono", monospace; font-size: 11.5px; padding: 5px 7px; border-radius: 3px; margin-top: 6px; border: 1px solid var(--line); }
+  .passage.in { border-color: rgb(212 255 58 / .5); color: var(--fg); }
+  .passage.out { border-style: dashed; color: var(--faint); text-decoration: line-through; }
+
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow-x: auto; }
+  svg { display: block; width: 100%; min-width: 760px; height: auto; }
+  .col-label { fill: var(--faint); font: 500 11px "IBM Plex Sans Condensed"; letter-spacing: .16em; text-transform: uppercase; }
+  .node rect { fill: var(--raised); stroke: var(--line-strong); stroke-width: 1; rx: 4; transition: stroke .2s, fill .2s, opacity .2s; }
+  .node .t { fill: var(--fg); font: 600 14px "IBM Plex Sans Condensed"; }
+  .node .f { fill: var(--dim); font: 400 11px "IBM Plex Mono"; }
+  .node .n { fill: var(--accent); font: 500 11px "IBM Plex Mono"; }
+  .node { cursor: pointer; outline: none; }
+  .node:hover rect, .node:focus-visible rect { stroke: var(--fg); }
+  .node.sel rect { stroke: var(--accent); stroke-width: 2; }
+  .edge { fill: none; stroke: var(--line-strong); stroke-width: 1.5; transition: stroke .2s, opacity .2s; }
+  .edge.dash { stroke-dasharray: 4 4; }
+  .elabel { fill: var(--faint); font: 400 10.5px "IBM Plex Mono"; transition: fill .2s; }
+  .group { fill: none; stroke: var(--line); stroke-dasharray: 3 4; rx: 6; }
+  .grouplabel { fill: var(--faint); font: 400 10.5px "IBM Plex Mono"; }
+  .band rect { fill: rgb(212 255 58 / .06); stroke: rgb(212 255 58 / .35); rx: 4; }
+
+  svg.playing .node rect { opacity: .28; }
+  svg.playing .node .t, svg.playing .node .f, svg.playing .node .n { opacity: .35; }
+  svg.playing .edge { opacity: .15; }
+  svg.playing .elabel { opacity: .2; }
+  svg.playing .node.lit rect { opacity: 1; stroke: var(--accent); fill: #1d2414; }
+  svg.playing .node.lit .t, svg.playing .node.lit .f, svg.playing .node.lit .n { opacity: 1; }
+  svg.playing .edge.lit { opacity: 1; stroke: var(--accent); stroke-width: 2.25; }
+  svg.playing .elabel.lit { opacity: 1; fill: var(--accent); }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); }
+  button { font: 500 13px "IBM Plex Sans Condensed"; color: var(--fg); background: var(--raised); border: 1px solid var(--line-strong); border-radius: 3px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.primary:hover { color: var(--accent-ink); filter: brightness(1.08); }
+  button:disabled { opacity: .4; cursor: default; }
+  .stepcount { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--faint); }
+  .narration { padding: 0 14px 16px; min-height: 92px; }
+  .narration .head { color: var(--fg); font-weight: 600; font-size: 16px; margin-bottom: 4px; }
+  .narration p { color: var(--dim); max-width: 900px; }
+
+  .detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 10px; }
+  .detail .card h3 { margin: 0 0 2px; font-size: 18px; }
+  .detail .file { color: var(--accent); }
+  .why { border-left: 2px solid var(--accent); padding-left: 10px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .grid .card { cursor: pointer; }
+  .grid .card:hover { border-color: var(--line-strong); }
+  .grid .card.sel { border-color: var(--accent); }
+  .grid .card h4 { margin: 0; font-size: 15px; }
+  .grid .card .mono { color: var(--faint); }
+
+  @media (max-width: 760px) {
+    .problem { grid-template-columns: 1fr; }
+    .detail { grid-template-columns: 1fr; }
+    h1 { font-size: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>GroundTruth, as one picture</h1>
+  <p class="lede">GroundTruth reproduces the wrong answer an AI search engine gives a buyer about your docs, finds the sentence that caused it, and writes the patch that fixes the page.</p>
+
+  <h2>The problem it reproduces</h2>
+  <div class="problem">
+    <div class="card">
+      <div class="k">1 · Buyer asks</div>
+      "Does CloudPulse's Pro plan support HIPAA compliance and SSO?"
+    </div>
+    <div class="card">
+      <div class="k">2 · Engine retrieves 3 passages</div>
+      <div class="passage in">&gt; Enterprise-grade SOC2 &amp; HIPAA security across our platform</div>
+      <div class="passage in">Plans table: Pro $49/mo …</div>
+      <div class="passage out">BAAs are available on the Enterprise plan only</div>
+      <p style="margin-top:6px;font-size:13px">The FAQ never says "HIPAA", so search skips it.</p>
+    </div>
+    <div class="card bad">
+      <div class="k">3 · Engine answers wrong</div>
+      "Every CloudPulse workspace runs on Enterprise-grade SOC2 and HIPAA security."
+      <p style="margin-top:6px;font-size:13px;color:var(--critical)">False. HIPAA needs the $499 Enterprise plan.</p>
+    </div>
+    <div class="card good">
+      <div class="k">4 · GroundTruth outputs</div>
+      A defect ticket, a <code>git</code> patch that adds <code>## Which plans include HIPAA?</code> with the answer first, and JSON-LD for the page head.
+    </div>
+  </div>
+
+  <h2>The whole system · press Play to follow one audit, or click any box</h2>
+  <div class="stage">
+    <svg id="map" viewBox="0 0 1120 640" role="img" aria-label="GroundTruth architecture diagram">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/>
+        </marker>
+      </defs>
+
+      <text class="col-label" x="20" y="34">Browser</text>
+      <text class="col-label" x="360" y="34">Next.js server</text>
+      <text class="col-label" x="860" y="34">Data &amp; outside</text>
+      <line x1="320" y1="20" x2="320" y2="570" stroke="#262a24"/>
+      <line x1="820" y1="20" x2="820" y2="570" stroke="#262a24"/>
+
+      <rect class="group" x="12" y="360" width="276" height="200"/>
+      <text class="grouplabel" x="22" y="377">both render from one state</text>
+
+      <path id="e-AE" class="edge" d="M280,95 L356,95" marker-end="url(#arrow)"/>
+      <text id="l-AE" class="elabel" x="286" y="86">POST</text>
+      <path id="e-EF" class="edge" d="M460,130 L460,186" marker-end="url(#arrow)"/>
+      <text id="l-EF" class="elabel" x="468" y="164">runAgent()</text>
+      <path id="e-EL" class="edge dash" d="M560,118 C588,118 584,350 597,350" marker-end="url(#arrow)"/>
+      <text id="l-EL" class="elabel" x="566" y="148">pick</text>
+      <path id="e-FG" class="edge dash" d="M560,205 C578,205 580,96 597,96" marker-end="url(#arrow)"/>
+      <path id="e-FH" class="edge" d="M560,238 L597,238" marker-end="url(#arrow)"/>
+      <path id="e-FL" class="edge" d="M540,270 L640,327" marker-end="url(#arrow)"/>
+      <text id="l-FL" class="elabel" x="596" y="292">forced turn</text>
+      <path id="e-FI" class="edge" d="M460,270 L460,326" marker-end="url(#arrow)"/>
+      <text id="l-FI" class="elabel" x="468" y="304">run step N</text>
+      <path id="e-IL" class="edge" d="M560,382 L597,382" marker-end="url(#arrow)"/>
+      <path id="e-IJ" class="edge" d="M460,410 L460,466" marker-end="url(#arrow)"/>
+      <path id="e-IK" class="edge" d="M555,410 L612,467" marker-end="url(#arrow)"/>
+      <path id="e-LM" class="edge" d="M780,370 L856,370" marker-end="url(#arrow)"/>
+      <text id="l-LM" class="elabel" x="790" y="361">live</text>
+      <path id="e-LN" class="edge dash" d="M780,345 C810,345 820,232 856,232" marker-end="url(#arrow)"/>
+      <text id="l-LN" class="elabel" x="786" y="300">replay</text>
+      <path id="e-FB" class="edge" d="M356,230 C318,230 320,285 284,285" marker-end="url(#arrow)"/>
+      <text id="l-FB" class="elabel" x="292" y="250">SSE</text>
+      <path id="e-BC" class="edge" d="M150,320 L150,386" marker-end="url(#arrow)"/>
+
+      <g class="node" data-id="A" tabindex="0" role="button"><rect x="20" y="60" width="260" height="70"/><text class="n" x="32" y="80">A</text><text class="t" x="48" y="82">Input Trigger</text><text class="f" x="32" y="112">components/Console.tsx</text></g>
+      <g class="node" data-id="B" tabindex="0" role="button"><rect x="20" y="250" width="260" height="70"/><text class="n" x="32" y="270">B</text><text class="t" x="48" y="272">Stream reader + reducer</text><text class="f" x="32" y="302">lib/run-state.ts</text></g>
+      <g class="node" data-id="C" tabindex="0" role="button"><rect x="28" y="390" width="244" height="64"/><text class="n" x="40" y="410">C</text><text class="t" x="56" y="412">Live Agent Telemetry</text><text class="f" x="40" y="440">components/Telemetry.tsx</text></g>
+      <g class="node" data-id="D" tabindex="0" role="button"><rect x="28" y="470" width="244" height="80"/><text class="n" x="40" y="490">D</text><text class="t" x="56" y="492">Artifact Workbench</text><text class="f" x="40" y="514">ticket · diff · JSON-LD · export</text><text class="f" x="40" y="534">components/Workbench.tsx</text></g>
+
+      <g class="node" data-id="E" tabindex="0" role="button"><rect x="360" y="60" width="200" height="70"/><text class="n" x="372" y="80">E</text><text class="t" x="388" y="82">API route</text><text class="f" x="372" y="112">api/agent/run/route.ts</text></g>
+      <g class="node" data-id="F" tabindex="0" role="button"><rect x="360" y="190" width="200" height="80"/><text class="n" x="372" y="210">F</text><text class="t" x="388" y="212">Orchestrator loop</text><text class="f" x="372" y="236">4 forced Gemini turns</text><text class="f" x="372" y="256">lib/agent.ts · runAgent</text></g>
+      <g class="node" data-id="I" tabindex="0" role="button"><rect x="360" y="330" width="200" height="80"/><text class="n" x="372" y="350">I</text><text class="t" x="388" y="352">Executors ×4</text><text class="f" x="372" y="376">the real work per step</text><text class="f" x="372" y="396">lib/agent.ts · EXECUTORS</text></g>
+      <g class="node" data-id="J" tabindex="0" role="button"><rect x="360" y="470" width="200" height="70"/><text class="n" x="372" y="490">J</text><text class="t" x="388" y="492">Retrieval</text><text class="f" x="372" y="522">lib/retrieval.ts</text></g>
+
+      <g class="node" data-id="G" tabindex="0" role="button"><rect x="600" y="60" width="180" height="70"/><text class="n" x="612" y="80">G</text><text class="t" x="628" y="82">Step registry</text><text class="f" x="612" y="112">lib/steps.ts</text></g>
+      <g class="node" data-id="H" tabindex="0" role="button"><rect x="600" y="200" width="180" height="70"/><text class="n" x="612" y="220">H</text><text class="t" x="628" y="222">Run context</text><text class="f" x="612" y="252">server-held data</text></g>
+      <g class="node" data-id="L" tabindex="0" role="button"><rect x="600" y="330" width="180" height="80"/><text class="n" x="612" y="350">L</text><text class="t" x="628" y="352">ModelPort</text><text class="f" x="612" y="376">live | replay</text><text class="f" x="612" y="396">lib/model.ts</text></g>
+      <g class="node" data-id="K" tabindex="0" role="button"><rect x="600" y="470" width="180" height="70"/><text class="n" x="612" y="490">K</text><text class="t" x="628" y="492">Checks + compilers</text><text class="f" x="612" y="522">diff · JSON-LD · retries</text></g>
+
+      <g class="node" data-id="N" tabindex="0" role="button"><rect x="860" y="195" width="240" height="70"/><text class="n" x="872" y="215">N</text><text class="t" x="888" y="217">Demo fixtures</text><text class="f" x="872" y="247">fixtures/scenarios.ts</text></g>
+      <g class="node" data-id="M" tabindex="0" role="button"><rect x="860" y="335" width="240" height="70"/><text class="n" x="872" y="355">M</text><text class="t" x="888" y="357">Gemini API</text><text class="f" x="872" y="387">gemini-3.5-flash-lite</text></g>
+
+      <g class="node band" data-id="Z" tabindex="0" role="button"><rect x="20" y="588" width="1080" height="36"/><text class="n" x="34" y="611">Z</text><text class="t" x="52" y="611">domain.ts</text><text class="f" x="140" y="611">the shared data contract that browser and server both import: scenario, step IDs, step outputs, event types</text></g>
+    </svg>
+    <div class="controls">
+      <button id="play" class="primary">▶ Play one audit</button>
+      <button id="prev" disabled>← Back</button>
+      <button id="next">Next →</button>
+      <button id="reset">Show all</button>
+      <span class="stepcount" id="count"></span>
+    </div>
+    <div class="narration" id="narration">
+      <div class="head">Press Play to watch one audit move through the system.</div>
+      <p>Each step lights up only the parts involved. Click any box to read what it does and why it exists.</p>
+    </div>
+  </div>
+
+  <div class="detail" id="detail" hidden>
+    <div class="card"><div class="k">What it does</div><h3 id="d-title"></h3><div class="mono file" id="d-file"></div><p id="d-what" style="margin-top:8px;color:var(--fg)"></p></div>
+    <div class="card"><div class="k">Why it exists</div><p class="why" id="d-why" style="color:var(--fg)"></p></div>
+  </div>
+
+  <h2>Every component</h2>
+  <div class="grid" id="grid"></div>
+</main>
+
+<script>
+const C = {
+  A: { title: "Input Trigger", file: "components/Console.tsx",
+       what: "The left panel. You pick one of three demo scenarios, can edit the doc, the buyer question and the ground-truth rules, then press the one button: Execute Causal AEO Audit.",
+       why: "The brief says no chat box. One trigger makes every run the same shape and easy to demo. Editing lets you try your own docs, which only works in live mode." },
+  B: { title: "Stream reader + reducer", file: "components/Console.tsx + lib/run-state.ts",
+       what: "Sends the POST, reads the reply as a stream, and hands each event to a reducer. The reducer keeps one status per step: pending, running, then done, error or skipped.",
+       why: "It uses fetch rather than EventSource because EventSource can't send a POST body. One reducer means the panels can never disagree, for example one showing done while another still shows running." },
+  C: { title: "Live Agent Telemetry", file: "components/Telemetry.tsx",
+       what: "The center panel. One node per step, drawn from the step registry. Each shows the arguments the model chose, a live timer, the time taken, and the output JSON.",
+       why: "The brief says no spinners, only telemetry. Seeing what the agent decided at each step is what makes you trust the patch at the end." },
+  D: { title: "Artifact Workbench", file: "components/Workbench.tsx",
+       what: "The right panel. A defect ticket (question, wrong answer, retrieved passages, root cause, acceptance test), a side-by-side diff, the JSON-LD, and Export (.patch download, git apply command, PR text, script tag).",
+       why: "The product delivers a merge-ready fix, not a score. Export replaces a real GitHub PR because opening one needs a token and writes to your repo." },
+  E: { title: "API route", file: "app/api/agent/run/route.ts",
+       what: "POST /api/agent/run. Checks the request body, picks the model port, opens a server-sent event stream, runs the agent, and writes each event as a data: line.",
+       why: "Input is validated once, here at the edge. Everything behind it can trust typed data and skip re-checking." },
+  F: { title: "Orchestrator loop", file: "lib/agent.ts · runAgent",
+       what: "A real Gemini conversation with all four tools declared. Each turn allows only the next tool (mode ANY, allowedFunctionNames = [next step]). The loop checks the returned name, runs the executor, sends a short summary back as the function response, and emits events. If step 3 finds no defect, step 4 is skipped.",
+       why: "You get genuine function calling with visible arguments, but the order can't drift. The brief asks for exactly one trigger, four tool calls, one PR." },
+  G: { title: "Step registry", file: "lib/steps.ts",
+       what: "One ordered list of the four steps. Each entry has the Gemini function name, the UI label, a summary, and the function declaration.",
+       why: "The Gemini tools and the UI nodes read the same list, so they can't fall out of sync. Adding a step is one new entry." },
+  H: { title: "Run context", file: "lib/agent.ts · RunContext",
+       what: "The server's copy of the scenario plus every finished step's output. Executors read the real markdown and rules from here.",
+       why: "The model's arguments are only labels, like a doc path or a one-line summary. A model asked to copy 3KB of markdown through its arguments will sometimes change it." },
+  I: { title: "Executors ×4", file: "lib/agent.ts · EXECUTORS",
+       what: "One per step. Each builds a prompt from the run context, makes an inner model call that must return JSON matching a schema, checks the result, and returns a typed output. 1: list claims vs rules. 2: answer the buyer from retrieved passages. 3: diagnose the defect. 4: rewrite the page.",
+       why: "The tool bodies do the real work. Keeping them out of the loop keeps the loop short and lets each step change on its own." },
+  J: { title: "Retrieval", file: "lib/retrieval.ts",
+       what: "Splits the page into passages and keeps each one's heading. It scores passages by overlap with the question's words, with rare words counting more, and keeps the top 3. Step 2 answers from only those 3 and never sees the ground truth.",
+       why: "Real answer engines read a few retrieved passages, not the whole page. Before this existed, the model read the whole page, found the buried FAQ, and 2 of 3 demos came back with no defect. It uses keywords as a stand-in for the embeddings real engines use." },
+  K: { title: "Checks + compilers", file: "lib/agent.ts",
+       what: "Checks that the root-cause quote appears in the doc word for word, and that the rewrite adds a new H2/H3. Each check gets one retry with feedback. It also restores the final newline, builds the unified diff with jsdiff, and builds the FAQPage and Product JSON-LD as objects.",
+       why: "Diffs written by a model often fail to apply, and JSON written by a model can be invalid. Built in code, the patch always applies and the JSON-LD always parses." },
+  L: { title: "ModelPort", file: "lib/model.ts",
+       what: "One interface with two versions. Live calls Gemini through the SDK, retries when rate-limited, and enforces JSON schemas. Replay returns hand-written outputs from the fixtures with realistic delays.",
+       why: "The loop and executors never know which version is running. Replay demos without a key or Wi-Fi, and the diff and JSON-LD are still computed for real. A badge always shows the mode." },
+  M: { title: "Gemini API", file: "gemini-3.5-flash-lite (override with GEMINI_MODEL)",
+       what: "Receives 8 requests per audit: 4 orchestrator turns plus 4 inner calls. The free tier allows 15 a minute, so back-to-back audits slow down while the SDK retries.",
+       why: "flash-lite was chosen because the 2.5 models are refused for new API keys. It answers each call in about 1 to 2 seconds." },
+  N: { title: "Demo fixtures", file: "fixtures/scenarios.ts",
+       what: "Three demo docs, each with a buyer question, ground-truth rules and replay data. CloudPulse: a HIPAA banner (False Claim). Relaywave: a usage cap in a footnote (Omitted Condition). Ledgerline: a removed SSO setup page (Broken Route).",
+       why: "The brief said to mock the scraping. Each doc buries its condition in words the buyer doesn't use, so retrieval misses it the way a real engine would." },
+  Z: { title: "domain.ts", file: "lib/domain.ts",
+       what: "The shared types both sides import: Scenario, the step IDs, each step's output, the defect record, and the event union streamed to the browser.",
+       why: "It was written first, as the contract everything else was built against. A change to an event or an output shows up as a type error on both sides." },
+};
+
+const STEPS = [
+  { head: "1 · You press Execute", nodes: "AE", edges: ["AE"],
+    text: "The Input Trigger sends the scenario (doc, question, rules) to POST /api/agent/run. The route checks the body before anything else runs." },
+  { head: "2 · The route picks a model", nodes: "ELMN", edges: ["EL", "LM", "LN"],
+    text: "With a GEMINI_API_KEY, ModelPort runs live against Gemini. Without one, it runs in replay and uses a fixture's hand-written outputs. Edited input is refused in replay." },
+  { head: "3 · The run starts", nodes: "EFHB", edges: ["EF", "FH", "FB"],
+    text: "The route opens a server-sent event stream and calls runAgent. The loop stores the scenario in the run context and emits run_start. The browser's reducer sets all four steps to pending." },
+  { head: "4 · Forced turn: Gemini must call step 1", nodes: "FGLM", edges: ["FG", "FL", "LM"],
+    text: "The loop reads the step order from the registry and asks Gemini for a function call, allowing only parse_doc_claims. Gemini returns the call and its chosen arguments." },
+  { head: "5 · The node goes live", nodes: "FBC", edges: ["FB", "BC"],
+    text: "The loop emits step_start with those arguments. The telemetry node switches to running, shows the arguments, and starts its timer." },
+  { head: "6 · Step 1 runs: extract ground truth", nodes: "IHLM", edges: ["FI", "IL", "LM"],
+    text: "The executor reads the real markdown and rules from the run context. It makes an inner Gemini call that must return JSON: every claim tagged explicit, buried, contradicted or missing. step_done follows, and a short summary goes back to Gemini as the function response." },
+  { head: "7 · Step 2: simulate the buyer", nodes: "IJLM", edges: ["IJ", "IL", "LM"],
+    text: "Retrieval picks the 3 passages that best match the question. The model answers from only those, with no ground truth. On CloudPulse it sees the HIPAA banner, misses the BAA FAQ, and answers wrong." },
+  { head: "8 · Step 3: diagnose the defect", nodes: "IKLMD", edges: ["IK", "IL", "LM"],
+    text: "The model compares the answer against the rules and returns a defect type, a harm level, and a quote of the passage that caused it. Code checks the quote is really in the doc, with one retry. The Defect Ticket fills in." },
+  { head: "9 · Step 4: compile the patch", nodes: "IKLMD", edges: ["IK", "IL", "LM"],
+    text: "The model rewrites the page answer-first. Code checks for a new H2, restores the final newline, builds the unified diff with jsdiff, and builds the JSON-LD as objects. The Diff, JSON-LD and Export tabs fill in." },
+  { head: "10 · Done", nodes: "FBCD", edges: ["FB", "BC"],
+    text: "The loop emits run_done. You can download the .patch file, copy the git apply command, and paste the JSON-LD into the page's <head>." },
+];
+
+const svg = document.getElementById("map");
+const nodes = [...svg.querySelectorAll(".node")];
+const narration = document.getElementById("narration");
+const count = document.getElementById("count");
+let step = -1;
+
+function render() {
+  nodes.forEach((n) => n.classList.remove("lit"));
+  svg.querySelectorAll(".edge, .elabel").forEach((e) => e.classList.remove("lit"));
+  document.getElementById("prev").disabled = step <= 0;
+  document.getElementById("next").disabled = step >= STEPS.length - 1;
+  if (step < 0) {
+    svg.classList.remove("playing");
+    count.textContent = "";
+    narration.innerHTML = '<div class="head">Press Play to watch one audit move through the system.</div><p>Each step lights up only the parts involved. Click any box to read what it does and why it exists.</p>';
+    return;
+  }
+  const s = STEPS[step];
+  svg.classList.add("playing");
+  for (const id of s.nodes) svg.querySelector(`.node[data-id="${id}"]`)?.classList.add("lit");
+  for (const e of s.edges) {
+    document.getElementById(`e-${e}`)?.classList.add("lit");
+    document.getElementById(`l-${e}`)?.classList.add("lit");
+  }
+  count.textContent = `step ${step + 1} of ${STEPS.length}`;
+  narration.innerHTML = "";
+  const h = document.createElement("div"); h.className = "head"; h.textContent = s.head;
+  const p = document.createElement("p"); p.textContent = s.text;
+  narration.append(h, p);
+}
+
+function select(id) {
+  const c = C[id];
+  document.getElementById("detail").hidden = false;
+  document.getElementById("d-title").textContent = `${id} · ${c.title}`;
+  document.getElementById("d-file").textContent = c.file;
+  document.getElementById("d-what").textContent = c.what;
+  document.getElementById("d-why").textContent = c.why;
+  nodes.forEach((n) => n.classList.toggle("sel", n.dataset.id === id));
+  document.querySelectorAll("#grid .card").forEach((g) => g.classList.toggle("sel", g.dataset.id === id));
+}
+
+nodes.forEach((n) => {
+  n.addEventListener("click", () => select(n.dataset.id));
+  n.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(n.dataset.id); } });
+});
+document.getElementById("play").onclick = () => { step = 0; render(); };
+document.getElementById("next").onclick = () => { step = Math.min(step + 1, STEPS.length - 1); render(); };
+document.getElementById("prev").onclick = () => { step = Math.max(step - 1, 0); render(); };
+document.getElementById("reset").onclick = () => { step = -1; render(); };
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest?.(".node")) return;
+  if (e.key === "ArrowRight") document.getElementById("next").click();
+  if (e.key === "ArrowLeft" && step > 0) document.getElementById("prev").click();
+});
+
+const grid = document.getElementById("grid");
+for (const [id, c] of Object.entries(C)) {
+  const card = document.createElement("div");
+  card.className = "card"; card.dataset.id = id; card.tabIndex = 0;
+  card.innerHTML = `<div class="k">${id}</div><h4></h4><div class="mono"></div><p style="margin-top:6px;font-size:13.5px"></p>`;
+  card.querySelector("h4").textContent = c.title;
+  card.querySelector(".mono").textContent = c.file;
+  card.querySelector("p").textContent = c.why;
+  card.onclick = () => { select(id); document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "nearest" }); };
+  grid.append(card);
+}
+render();
+</script>
+</body>
+</html>
