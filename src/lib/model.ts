@@ -66,10 +66,13 @@ function livePort(apiKey: string, modelId: string): ModelPort {
           },
         },
       });
-      const call = res.functionCalls?.[0];
       const content = res.candidates?.[0]?.content;
-      if (!call || !content) throw new Error(`Orchestrator returned no function call for ${step}`);
-      return { name: call.name ?? "", args: call.args ?? {}, id: call.id, content };
+      const callPart = content?.parts?.find((p) => p.functionCall);
+      const call = callPart?.functionCall;
+      if (!content || !call) throw new Error(`Orchestrator returned no function call for ${step}`);
+      // Every functionCall in history needs a matching functionResponse, so keep only the one we execute.
+      const parts = content.parts?.filter((p) => !p.functionCall || p === callPart);
+      return { name: call.name ?? "", args: call.args ?? {}, id: call.id, content: { ...content, parts } };
     },
     async generate(step, prompt) {
       const res = await ai.models.generateContent({
