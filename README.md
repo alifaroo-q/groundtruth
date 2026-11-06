@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GroundTruth
 
-## Getting Started
+GroundTruth finds where a SaaS docs page makes AI answer engines give buyers wrong answers. It ends in a patch that fixes the page. One button runs four Gemini function calls in a fixed order: `parse_doc_claims`, `test_buyer_prompt`, `verify_causal_harm`, `generate_pr_artifact`. The result is a defect ticket, a unified diff, and JSON-LD.
 
-First, run the development server:
+## Run
 
 ```bash
+npm install
+cp .env.local.example .env.local   # add GEMINI_API_KEY for live mode
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without a key, the app runs in replay mode on the three fixtures, and a badge says so. Replay outputs are hand-written samples. The diff and JSON-LD are still computed in code. In replay mode, an edited input is rejected.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Check
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run check -- http://localhost:3000
+```
 
-## Learn More
+The check posts each fixture to `/api/agent/run` and asserts the following:
 
-To learn more about Next.js, take a look at the following resources:
+- The four steps run in order.
+- The patch applies cleanly to the original doc.
+- The JSON-LD is valid.
+- The new H2 or H3 states the tier condition.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Layout
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `src/lib/domain.ts` defines the data contract.
+- `src/lib/steps.ts` is the step registry. It feeds the Gemini declarations and the telemetry nodes.
+- `src/lib/agent.ts` holds the orchestrator loop and tool executors.
+- `src/lib/model.ts` holds the live Gemini port and the replay port.
+- `src/fixtures/scenarios.ts` holds the three demo scenarios.
