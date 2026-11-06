@@ -55,7 +55,7 @@ export function Console({ mode, modelId, scenarios }: { mode: RunMode; modelId: 
 
   const running = state.run.phase === "running";
   const edited =
-    draft.buyerQuestion !== fixture.buyerQuestion ||
+    draft.buyerQuestion.trim() !== fixture.buyerQuestion ||
     draft.publicMarkdown !== fixture.publicMarkdown ||
     parseRules(draft.rulesText).join("\n") !== fixture.groundTruthRules.join("\n");
 

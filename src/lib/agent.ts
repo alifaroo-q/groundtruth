@@ -29,7 +29,6 @@ function prior<S extends StepId>(ctx: RunContext, step: S): StepOutput[S] {
   return output as StepOutput[S];
 }
 
-// Takes only the public page and question: ground truth here would erase the hallucination under test.
 function unguidedAnswerPrompt({ publicMarkdown, buyerQuestion }: Pick<Scenario, "publicMarkdown" | "buyerQuestion">) {
   return `You are an AI answer engine. A buyer asked the question below. Answer the buyer directly and confidently from this page in 2 to 4 sentences.
 In citedPassages, copy verbatim the passages from the page you relied on.

@@ -255,7 +255,7 @@ function Export({ scenario, synthesis, defect, pr }: { scenario: Scenario; synth
     const url = URL.createObjectURL(new Blob([pr.unifiedDiff], { type: "text/x-diff" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: file });
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
   return (
     <div className="flex flex-col gap-3">
