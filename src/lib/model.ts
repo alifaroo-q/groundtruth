@@ -24,7 +24,7 @@ const apiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
 export function runtimeMode(): { mode: RunMode; modelId: string } {
   return apiKey()
-    ? { mode: "live", modelId: process.env.GEMINI_MODEL || "gemini-2.5-flash" }
+    ? { mode: "live", modelId: process.env.GEMINI_MODEL || "gemini-3.5-flash-lite" }
     : { mode: "replay", modelId: REPLAY_MODEL_ID };
 }
 
@@ -50,7 +50,8 @@ const ORCHESTRATOR_INSTRUCTION =
   "The server holds the full document text, ground-truth rules, and every prior tool output. Pass short references (doc paths) and one-line summaries as arguments, never full document text.";
 
 function livePort(apiKey: string, modelId: string): ModelPort {
-  const ai = new GoogleGenAI({ apiKey });
+  // One audit is 8 requests; the free tier allows 15/min, so back off on 429 instead of failing the run.
+  const ai = new GoogleGenAI({ apiKey, httpOptions: { retryOptions: { attempts: 5, initialDelay: 4, maxDelay: 40 } } });
   return {
     mode: "live",
     modelId,
