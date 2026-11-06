@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --font-sans: var(--font-plex-condensed), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-canvas: #0b0c0a;
+  --color-panel: #111310;
+  --color-raised: #171a16;
+  --color-line: #262a24;
+  --color-line-strong: #3a4036;
+  --color-fg: #e4e7df;
+  --color-dim: #8b9285;
+  --color-faint: #5c6357;
+  --color-accent: #d4ff3a;
+  --color-accent-ink: #141a00;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-critical: #ff4d4d;
+  --color-high: #ff9a3c;
+  --color-medium: #f5d547;
+  --color-low: #8fa3b8;
+
+  --color-add: #3ddc97;
+  --color-del: #ff6b6b;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-fg);
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.hatch {
+  background-image: repeating-linear-gradient(-45deg, transparent 0 6px, rgb(245 213 71 / 0.12) 6px 12px);
+}
+
+@keyframes pulse-line {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+.pulse-line {
+  animation: pulse-line 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-line { animation: none; }
 }
