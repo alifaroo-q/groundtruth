@@ -7,8 +7,8 @@ import { STEPS } from "../src/lib/steps.ts";
 const baseUrl = (process.argv[2] ?? "http://localhost:3000").replace(/\/$/, "");
 const endpoint = `${baseUrl}/api/agent/run`;
 const EXPECTED = {
-  cloudpulse: { defectType: "False Claim", harm: "Critical", tier: "Enterprise" },
-  relaywave: { defectType: "Omitted Condition", tier: "Growth" },
+  cloudpulse: { defectType: "False Claim", harm: "Critical", tier: "Enterprise", buried: "BAAs are available on the Enterprise plan only" },
+  relaywave: { defectType: "Omitted Condition", tier: "Growth", buried: "Fair Use Policy of 1,000,000 requests" },
   ledgerline: { defectType: "Broken Route", tier: "Business" },
 };
 
@@ -63,18 +63,18 @@ for (const { scenario } of FIXTURES) {
   assert.equal(finish.type, "run_done", `${scenario.id}: last event is run_done`);
   for (const d of done) assert.ok(Number.isFinite(d.ms) && d.ms >= 0, `${scenario.id}: ${d.step} ms is numeric`);
 
-  const verdict = done.find((d) => d.step === "verify_causal_harm").output;
-  if (verdict.verdict === "no_defect") {
-    assert.deepEqual(starts, STEP_IDS.slice(0, 3), `${scenario.id}: 3 step_start in order`);
-    assert.ok(events.some((e) => e.type === "step_skipped" && e.step === "generate_pr_artifact"), `${scenario.id}: patch step skipped`);
-    assert.equal(finish.outcome, "no_defect");
-    console.log(`ok   ${scenario.id}: no_defect, ${events.length} events`);
-    continue;
+  const expected = EXPECTED[scenario.id];
+  const simulation = done.find((d) => d.step === "test_buyer_prompt").output;
+  assert.ok(simulation.retrievedPassages.length > 0, `${scenario.id}: answer engine retrieved passages`);
+  if (expected.buried) {
+    assert.ok(scenario.publicMarkdown.includes(expected.buried), `${scenario.id}: buried condition is on the page`);
+    assert.ok(!simulation.retrievedPassages.some((p) => p.includes(expected.buried)), `${scenario.id}: buried condition is not retrieved`);
   }
 
+  const verdict = done.find((d) => d.step === "verify_causal_harm").output;
+  assert.equal(verdict.verdict, "defect", `${scenario.id}: demo fixture yields a defect (answer: ${simulation.answer})`);
   assert.deepEqual(starts, [...STEP_IDS], `${scenario.id}: 4 step_start in STEPS order`);
   assert.equal(finish.outcome, "patched");
-  const expected = EXPECTED[scenario.id];
   assert.equal(verdict.defectType, expected.defectType, `${scenario.id}: defect type`);
   if (expected.harm) assert.equal(verdict.harm, expected.harm, `${scenario.id}: harm`);
   assert.ok(scenario.publicMarkdown.includes(verdict.rootCauseExcerpt), `${scenario.id}: rootCauseExcerpt is verbatim`);

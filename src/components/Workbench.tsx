@@ -3,7 +3,7 @@
 import { diffLines } from "diff";
 import { Check, Copy, Download } from "lucide-react";
 import { useState } from "react";
-import type { BuyerSynthesis, DefectRecord, HarmLevel, PrArtifact, Scenario } from "@/lib/domain";
+import type { BuyerSimulation, DefectRecord, HarmLevel, PrArtifact, Scenario } from "@/lib/domain";
 import { outputOf, type RunState } from "@/lib/run-state";
 
 const TABS = ["Defect Ticket", "Diff", "JSON-LD", "Export"] as const;
@@ -77,7 +77,7 @@ function Empty({ tab, state }: { tab: Tab; state: RunState }) {
   );
 }
 
-function Ticket({ scenario, synthesis, record }: { scenario: Scenario; synthesis: BuyerSynthesis | null; record: DefectRecord }) {
+function Ticket({ scenario, synthesis, record }: { scenario: Scenario; synthesis: BuyerSimulation | null; record: DefectRecord }) {
   if (record.verdict === "no_defect") {
     return (
       <div className="flex flex-col gap-3">
@@ -101,6 +101,17 @@ function Ticket({ scenario, synthesis, record }: { scenario: Scenario; synthesis
       {synthesis && (
         <Row label="Hallucinated answer">
           <blockquote className="border-l-2 border-critical/60 pl-3 text-fg">{synthesis.answer}</blockquote>
+        </Row>
+      )}
+      {synthesis && (
+        <Row label={`What the answer engine retrieved (${synthesis.retrievedPassages.length} passages)`}>
+          <div className="flex flex-col gap-1.5">
+            {synthesis.retrievedPassages.map((p, i) => (
+              <code key={i} className="block rounded-sm border border-line bg-canvas px-2.5 py-1.5 font-mono text-[11px] break-words whitespace-pre-wrap text-dim">
+                {p}
+              </code>
+            ))}
+          </div>
         </Row>
       )}
       <Row label="False statement">{record.hallucinatedStatement}</Row>
@@ -210,7 +221,7 @@ function DiffView({ before, after, path }: { before: string; after: string; path
 
 const patchFileName = (branch: string) => `${branch.replaceAll("/", "-")}.patch`;
 
-function prBody(scenario: Scenario, synthesis: BuyerSynthesis | null, d: Defect, pr: PrArtifact): string {
+function prBody(scenario: Scenario, synthesis: BuyerSimulation | null, d: Defect, pr: PrArtifact): string {
   const quote = (s: string) => s.split("\n").map((l) => `> ${l}`).join("\n");
   return `# ${pr.prTitle}
 
@@ -249,7 +260,7 @@ const ldScripts = (jsonLd: Record<string, unknown>[]) =>
     .map((o) => `<script type="application/ld+json">\n${JSON.stringify(o, null, 2).replace(/</g, "\\u003c")}\n</script>`)
     .join("\n");
 
-function Export({ scenario, synthesis, defect, pr }: { scenario: Scenario; synthesis: BuyerSynthesis | null; defect: Defect; pr: PrArtifact }) {
+function Export({ scenario, synthesis, defect, pr }: { scenario: Scenario; synthesis: BuyerSimulation | null; defect: Defect; pr: PrArtifact }) {
   const file = patchFileName(pr.branchName);
   const download = () => {
     const url = URL.createObjectURL(new Blob([pr.unifiedDiff], { type: "text/x-diff" }));

@@ -12,6 +12,7 @@ import {
   type StepOutput,
 } from "./domain";
 import type { ModelPort } from "./model";
+import { retrievePassages } from "./retrieval";
 import { STEPS } from "./steps";
 
 type RunContext = { scenario: Scenario; port: ModelPort; outputs: Partial<StepOutput> };
@@ -29,12 +30,13 @@ function prior<S extends StepId>(ctx: RunContext, step: S): StepOutput[S] {
   return output as StepOutput[S];
 }
 
-function unguidedAnswerPrompt({ publicMarkdown, buyerQuestion }: Pick<Scenario, "publicMarkdown" | "buyerQuestion">) {
-  return `You are an AI answer engine. A buyer asked the question below. Answer the buyer directly and confidently from this page in 2 to 4 sentences.
-In citedPassages, copy verbatim the passages from the page you relied on.
+function unguidedAnswerPrompt(passages: string[], buyerQuestion: string) {
+  return `You are an AI answer engine. A buyer asked the question below. Your search step retrieved the passages below from the vendor's docs.
+Answer the buyer directly and confidently from these passages in 2 to 4 sentences.
+In citedPassages, copy verbatim the passages you relied on.
 
-PAGE:
-${publicMarkdown}
+RETRIEVED PASSAGES:
+${passages.join("\n\n---\n\n")}
 
 QUESTION: ${buyerQuestion}`;
 }
@@ -72,8 +74,12 @@ ${rulesBlock(scenario.groundTruthRules)}`,
   },
 
   test_buyer_prompt: {
-    run: ({ scenario, port }) => port.generate("test_buyer_prompt", unguidedAnswerPrompt(scenario)),
-    toFunctionResponse: (s) => ({ answer: s.answer }),
+    async run({ scenario, port }) {
+      const retrievedPassages = retrievePassages(scenario.publicMarkdown, scenario.buyerQuestion);
+      const synthesis = await port.generate("test_buyer_prompt", unguidedAnswerPrompt(retrievedPassages, scenario.buyerQuestion));
+      return { ...synthesis, retrievedPassages };
+    },
+    toFunctionResponse: (s) => ({ answer: s.answer, retrievedPassages: s.retrievedPassages.length }),
   },
 
   verify_causal_harm: {
@@ -87,7 +93,7 @@ If the answer contradicts a rule or drops a condition a rule requires, return ve
 - hallucinatedStatement: the false sentence from the answer
 - violatedRule: the exact text of the violated rule
 - rootCauseExcerpt: the page passage that caused the error, copied character for character from the page
-- rootCauseExplanation: why the page led the answer engine there, and the buyer impact
+- rootCauseExplanation: why the page led the answer engine there (including any condition that was not among the retrieved passages because it does not use the buyer's wording), and the buyer impact
 - acceptanceTest: the observable answer a fixed page must produce for the same question
 Otherwise return verdict "no_defect" with a one-sentence rationale.
 
@@ -98,6 +104,9 @@ GROUND-TRUTH RULES:
 ${rulesBlock(scenario.groundTruthRules)}
 
 BUYER QUESTION: ${scenario.buyerQuestion}
+
+PASSAGES THE ANSWER ENGINE RETRIEVED:
+${synthesis.retrievedPassages.join("\n\n---\n\n")}
 
 ANSWER ENGINE RESPONSE:
 ${synthesis.answer}`;
@@ -123,12 +132,10 @@ ${synthesis.answer}`;
       const { scenario, port } = ctx;
       const defect = prior(ctx, "verify_causal_harm");
       if (defect.verdict !== "defect") throw new Error("No defect to remediate");
-      const draft = await port.generate(
-        "generate_pr_artifact",
-        `Rewrite this docs page so an answer engine gives the buyer the correct answer.
+      const prompt = `Rewrite this docs page so an answer engine gives the buyer the correct answer.
 Rules:
-- Answer first. Add an explicit H2 or H3 heading phrased as the buyer's question.
-- The first sentence under that heading states the fact and its tier or price condition.
+- Answer first. Add a NEW H2 or H3 heading (a line starting with "## " or "### ") phrased as the buyer's question, placed near the top of the page.
+- The first sentence under that heading states the fact and its tier or price condition, using the buyer question's own terms so a keyword search retrieves it.
 - Remove or qualify the passage that caused the defect (the root-cause excerpt) and any line that repeats it.
 - Leave every other line byte-for-byte unchanged so the diff stays focused.
 Return rewrittenMarkdown (the full page), 2 or 3 FAQ entries for FAQPage structured data, productName, prTitle (conventional commit style, e.g. "docs(pricing): ..."), and verificationCheck (how to confirm the fix with the same buyer question).
@@ -140,13 +147,28 @@ GROUND-TRUTH RULES:
 ${rulesBlock(scenario.groundTruthRules)}
 
 ORIGINAL PAGE (${scenario.docPath}):
-${scenario.publicMarkdown}`,
-      );
+${scenario.publicMarkdown}`;
+
+      let draft = await port.generate("generate_pr_artifact", prompt);
+      if (!addsHeading(scenario.publicMarkdown, draft.rewrittenMarkdown)) {
+        draft = await port.generate(
+          "generate_pr_artifact",
+          `${prompt}\n\nYour previous rewrite added no new H2/H3 heading. Add one phrased as the buyer's question, with the answer in the first sentence below it.`,
+        );
+        if (!addsHeading(scenario.publicMarkdown, draft.rewrittenMarkdown)) {
+          throw new Error("Rewrite does not add an answer-first H2/H3 heading");
+        }
+      }
       return compilePrArtifact(scenario, defect, draft);
     },
     toFunctionResponse: (p) => ({ branchName: p.branchName, prTitle: p.prTitle, diffLines: p.unifiedDiff.split("\n").length }),
   },
 };
+
+function addsHeading(original: string, rewritten: string): boolean {
+  const before = new Set(original.split("\n"));
+  return rewritten.split("\n").some((line) => /^#{2,3} \S/.test(line) && !before.has(line));
+}
 
 function toDefectRecord(raw: Record<string, unknown>): DefectRecord {
   if (raw.verdict === "no_defect") return { verdict: "no_defect", rationale: String(raw.rationale ?? "") };
@@ -168,13 +190,16 @@ function compilePrArtifact(
   defect: Extract<DefectRecord, { verdict: "defect" }>,
   draft: RewriteDraft,
 ): PrArtifact {
+  // Models drop the final newline, which turns the untouched last line into a fake edit.
+  const rewrittenMarkdown = draft.rewrittenMarkdown.replace(/\n*$/, scenario.publicMarkdown.endsWith("\n") ? "\n" : "");
   return {
     ...draft,
+    rewrittenMarkdown,
     unifiedDiff: createTwoFilesPatch(
       `a/${scenario.docPath}`,
       `b/${scenario.docPath}`,
       scenario.publicMarkdown,
-      draft.rewrittenMarkdown,
+      rewrittenMarkdown,
       undefined,
       undefined,
       { headerOptions: FILE_HEADERS_ONLY },

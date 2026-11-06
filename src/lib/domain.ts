@@ -30,6 +30,8 @@ export type BuyerSynthesis = {
   citedPassages: string[];
 };
 
+export type BuyerSimulation = BuyerSynthesis & { retrievedPassages: string[] };
+
 export const DEFECT_TYPES = ["False Claim", "Omitted Condition", "Broken Route"] as const;
 export type DefectType = (typeof DEFECT_TYPES)[number];
 
@@ -76,7 +78,7 @@ export type ModelOutput = {
 /** Final tool result per step: what the telemetry node and the workbench render. */
 export type StepOutput = {
   parse_doc_claims: ClaimsReport;
-  test_buyer_prompt: BuyerSynthesis;
+  test_buyer_prompt: BuyerSimulation;
   verify_causal_harm: DefectRecord;
   generate_pr_artifact: PrArtifact;
 };

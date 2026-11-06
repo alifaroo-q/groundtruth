@@ -119,7 +119,7 @@ Free plan calls do not roll over.
 
 ---
 
-¹ Growth plan API usage is subject to our Fair Use Policy: 1,000,000 API calls per calendar month per workspace. Requests beyond this are throttled to 5 requests/second until the next billing cycle. Scale has no monthly cap.
+¹ Growth workspaces fall under our Fair Use Policy of 1,000,000 requests per calendar month. Traffic beyond this is throttled to 5 requests/second until the next billing cycle. Scale has no monthly cap.
 `;
 
 const ledgerlineDoc = `# Ledgerline Admin Guide: Single Sign-On

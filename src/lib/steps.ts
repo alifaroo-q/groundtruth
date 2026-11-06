@@ -43,7 +43,7 @@ export const STEPS: StepDef[] = [
   {
     id: "test_buyer_prompt",
     label: "simulate_buyer_synthesis()",
-    summary: "Ask an unguided answer engine the buyer question using only the public page.",
+    summary: "Retrieve the top passages for the buyer question, then answer from them like an unguided answer engine.",
     declaration: declare(
       "test_buyer_prompt",
       "Simulate an AI answer engine answering a buyer's question from the public page alone, with no access to ground truth.",
